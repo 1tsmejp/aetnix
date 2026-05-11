@@ -1,0 +1,102 @@
+name: aetnix
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      # In production, prefer same-origin API routing behind a reverse proxy.
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4000
+      API_PREFIX: ${API_PREFIX:-/api}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://app.example.com}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://msp_user:change-me@postgres:5432/msp_platform}
+      JWT_SECRET: ${JWT_SECRET:-change-me-before-production}
+      JWT_ISSUER: ${JWT_ISSUER:-aetnix}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-8h}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-7}
+      PLATFORM_NAME: ${PLATFORM_NAME:-AETNIX}
+      MONITORING_OFFLINE_THRESHOLD_MS: ${MONITORING_OFFLINE_THRESHOLD_MS:-120000}
+      MONITORING_SWEEP_INTERVAL_MS: ${MONITORING_SWEEP_INTERVAL_MS:-60000}
+      MONITORING_CPU_WARNING_PERCENT: ${MONITORING_CPU_WARNING_PERCENT:-85}
+      MONITORING_CPU_CRITICAL_PERCENT: ${MONITORING_CPU_CRITICAL_PERCENT:-95}
+      MONITORING_MEMORY_WARNING_PERCENT: ${MONITORING_MEMORY_WARNING_PERCENT:-85}
+      MONITORING_MEMORY_CRITICAL_PERCENT: ${MONITORING_MEMORY_CRITICAL_PERCENT:-95}
+      MONITORING_DISK_WARNING_PERCENT: ${MONITORING_DISK_WARNING_PERCENT:-85}
+      MONITORING_DISK_CRITICAL_PERCENT: ${MONITORING_DISK_CRITICAL_PERCENT:-95}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    # Keep Postgres private unless you explicitly need host access.
+    # Uncomment if you want local access for admin/migrations:
+    # ports:
+    #   - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-msp_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-msp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-msp_user} -d ${POSTGRES_DB:-msp_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional sample agent container for lab/demo use.
+  # Leave this disabled in normal production unless you want a local test agent.
+  agent-test:
+    profiles: ["lab"]
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${AGENT_PORT:-4100}:4100"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4100
+      AGENT_API_BASE_URL: ${AGENT_API_BASE_URL:-http://backend:4000/api}
+      AGENT_HEARTBEAT_INTERVAL_MS: ${AGENT_HEARTBEAT_INTERVAL_MS:-30000}
+      AGENT_ENABLE_HEARTBEAT: ${AGENT_ENABLE_HEARTBEAT:-false}
+      AGENT_KEY: ${AGENT_KEY:-}
+      AGENT_VERSION: ${AGENT_VERSION:-0.5.0}
+      AGENT_MONITORED_SERVICES: ${AGENT_MONITORED_SERVICES:-docker,ssh}
+      AGENT_SOFTWARE_LIMIT: ${AGENT_SOFTWARE_LIMIT:-100}
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
