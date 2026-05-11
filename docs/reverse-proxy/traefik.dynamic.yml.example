@@ -1,0 +1,26 @@
+http:
+  routers:
+    aetnix-frontend:
+      rule: "Host(`app.example.com`)"
+      entryPoints:
+        - websecure
+      service: aetnix-frontend
+      tls: {}
+
+    aetnix-backend:
+      rule: "Host(`app.example.com`) && PathPrefix(`/api`)"
+      entryPoints:
+        - websecure
+      service: aetnix-backend
+      tls: {}
+
+  services:
+    aetnix-frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+    aetnix-backend:
+      loadBalancer:
+        servers:
+          - url: "http://backend:4000"
